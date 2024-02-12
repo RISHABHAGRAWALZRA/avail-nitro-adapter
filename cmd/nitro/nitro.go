@@ -311,6 +311,7 @@ func mainImpl() int {
 			log.Crit("couldn't parse staker strategy", "err", err)
 		}
 		if strategy != staker.WatchtowerStrategy && !nodeConfig.Node.Staker.Dangerous.WithoutBlockValidator {
+			log.Info("Block Validator Enabled", "strategy", strategy)
 			nodeConfig.Node.BlockValidator.Enable = true
 		}
 	}

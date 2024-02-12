@@ -125,7 +125,7 @@ func (availDAReader *PreimageAvailDAReader) Read(ctx context.Context, blobPointe
 		return wavmio.ResolveTypedPreimage(arbutil.Keccak256PreimageType, hash)
 	}
 	data, err := dastree.Content(blobPointer.DasTreeRootHash, oracle)
-	log.Info("Data is being retrieved from oracle", len(data))
+	log.Error("Data is being retrieved from oracle", len(data))
 	return data, err
 }
 
@@ -172,7 +172,7 @@ func main() {
 		lastBlockStateRoot = lastBlockHeader.Root
 	}
 
-	log.Info("Initial State", "lastBlockHash", lastBlockHash, "lastBlockStateRoot", lastBlockStateRoot)
+	log.Error("Initial State", "lastBlockHash", lastBlockHash, "lastBlockStateRoot", lastBlockStateRoot)
 	statedb, err := state.NewDeterministic(lastBlockStateRoot, db)
 	if err != nil {
 		panic(fmt.Sprintf("Error opening state db: %v", err.Error()))
@@ -209,7 +209,7 @@ func main() {
 
 	var newBlock *types.Block
 	if lastBlockStateRoot != (common.Hash{}) {
-		log.Info("Running main func of replay binary", "lastBlockStateRoot", lastBlockStateRoot)
+		log.Error("Running main func of replay binary", "lastBlockStateRoot", lastBlockStateRoot)
 
 		// ArbOS has already been initialized.
 		// Load the chain config and then produce a block normally.
