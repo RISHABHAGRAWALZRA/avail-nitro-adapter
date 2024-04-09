@@ -2,11 +2,7 @@ package avail
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 
 	"time"
 
@@ -17,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/offchainlabs/nitro/das/dastree"
 	"github.com/vedhavyas/go-subkey"
-	"golang.org/x/crypto/sha3"
 )
 
 // AvailMessageHeaderFlag indicates that this data is a Blob Pointer
@@ -189,64 +184,14 @@ outer:
 		}
 	}
 
-	// Calculated batch hash for batch commitment
-	var batchHash [32]byte
-	h := sha3.NewLegacyKeccak256()
-	h.Write(message)
-	h.Sum(batchHash[:0])
-
-	extrinsicIndex := 1
-	// Quering for merkle proof from Bridge Api
-	bridgeApiBaseURL := "https://bridge-api.sandbox.avail.tools"
-	blockHashPath := "/eth/proof/" + "0xf53613fa06b6b7f9dc5e4cf5f2849affc94e19d8a9e8999207ece01175c988ed" //+ finalizedblockHash.Hex()
-	params := url.Values{}
-	params.Add("index", fmt.Sprint(extrinsicIndex))
-
-	u, _ := url.ParseRequestURI(bridgeApiBaseURL)
-	u.Path = blockHashPath
-	u.RawQuery = params.Encode()
-	urlStr := fmt.Sprintf("%v", u)
-
-	// TODO: Add time difference between batch submission and querying merkle proof
-	resp, err := http.Get(urlStr) //nolint
-	if err != nil {
-		return nil, fmt.Errorf("bridge Api request not successfull, err=%w", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	var bridgdeApiResponse BridgdeApiResponse
-	err = json.Unmarshal(body, &bridgdeApiResponse)
-	if err != nil {
-		return nil, err
-	}
-	var merkleProofInput MerkleProofInput = MerkleProofInput{bridgdeApiResponse.DataRootProof, bridgdeApiResponse.LeafProof, bridgdeApiResponse.RangeHash, bridgdeApiResponse.DataRootIndex, bridgdeApiResponse.BlobRoot, bridgdeApiResponse.BridgeRoot, bridgdeApiResponse.Leaf, bridgdeApiResponse.LeafIndex}
-
 	// Creating BlobPointer to submit over settlement layer
-	blobPointer := BlobPointer{BlockHash: finalizedblockHash, Sender: a.keyringPair.Address, Nonce: nonce, DasTreeRootHash: dastree.Hash(message), MerkleProofInput: merkleProofInput}
+	blobPointer := BlobPointer{BlockHash: finalizedblockHash, Sender: a.keyringPair.Address, Nonce: nonce, DasTreeRootHash: dastree.Hash(message), MerkleProofInput: MerkleProofInput{}}
 	log.Info("✅  Sucesfully included in block data to Avail", "BlobPointer:", blobPointer)
 	blobPointerData, err := blobPointer.MarshalToBinary()
 	if err != nil {
 		log.Warn("⚠️ BlobPointer MashalBinary error", "err", err)
 		return nil, err
 	}
-
-	// buf := new(bytes.Buffer)
-	// err = binary.Write(buf, binary.BigEndian, AvailMessageHeaderFlag)
-	// if err != nil {
-	// 	log.Warn("⚠️ batch type byte serialization failed", "err", err)
-	// 	return nil, err
-	// }
-
-	// err = binary.Write(buf, binary.BigEndian, blobPointerData)
-	// if err != nil {
-	// 	log.Warn("⚠️ blob pointer data serialization failed", "err", err)
-	// 	return nil, err
-	// }
-
-	// serializedBlobPointerData := buf.Bytes()
 
 	return blobPointerData, nil
 
