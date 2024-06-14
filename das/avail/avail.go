@@ -17,7 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/offchainlabs/nitro/arbutil"
 	"github.com/offchainlabs/nitro/das/avail/vectorx"
-	"github.com/offchainlabs/nitro/das/dastree"
 )
 
 // AvailMessageHeaderFlag indicates that this data is a Blob Pointer
@@ -137,29 +136,8 @@ func (a *AvailDA) Store(ctx context.Context, message []byte) ([]byte, error) {
 		return nil, fmt.Errorf("cannot submit data to avail:%w", err)
 	}
 
-	header, err := a.api.RPC.Chain.GetHeader(finalizedblockHash)
-	if err != nil {
-		return nil, fmt.Errorf("cannot get header for finalized block:%w", err)
-	}
-
-	err = a.vectorx.SubscribeForHeaderUpdate(int(header.Number), a.vectorXTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("cannot get the event for header update on vectorx:%w", err)
-	}
-
-	extrinsicIndex, err := GetExtrinsicIndex(a.api, finalizedblockHash, a.keyringPair.Address, nonce)
-	if err != nil {
-		return nil, err
-	}
-	log.Info("Finalized extrinsic", "extrinsicIndex", extrinsicIndex)
-
-	merkleProofInput, err := QueryMerkleProofInput(a.bridgeApiBaseURL, finalizedblockHash.Hex(), extrinsicIndex, a.bridgeApiTimeout)
-	if err != nil {
-		return nil, err
-	}
-
 	// Creating BlobPointer to submit over settlement layer
-	blobPointer := BlobPointer{BlockHash: finalizedblockHash, Sender: a.keyringPair.Address, Nonce: uint32(nonce.Int64()), DasTreeRootHash: dastree.Hash(message), MerkleProofInput: merkleProofInput}
+	blobPointer := BlobPointer{BlockHash: finalizedblockHash, Sender: a.keyringPair.Address, Nonce: uint32(nonce.Int64())}
 	log.Info("✅  Sucesfully included in block data to Avail", "BlobPointer:", blobPointer)
 	blobPointerData, err := blobPointer.MarshalToBinary()
 	if err != nil {
@@ -194,6 +172,34 @@ func (a *AvailDA) Read(ctx context.Context, blobPointer BlobPointer) ([]byte, er
 	return data, nil
 }
 
+func (a *AvailDA) VerifyAgainstVectorX(blobPointer BlobPointer) (MerkleProofInput, error) {
+	finalizedblockHash := blobPointer.BlockHash
+	nonce := gsrpc_types.NewUCompactFromUInt(uint64(blobPointer.Nonce))
+
+	header, err := a.api.RPC.Chain.GetHeader(finalizedblockHash)
+	if err != nil {
+		return MerkleProofInput{}, fmt.Errorf("cannot get header for finalized block:%w", err)
+	}
+
+	err = a.vectorx.SubscribeForHeaderUpdate(int(header.Number), a.vectorXTimeout)
+	if err != nil {
+		return MerkleProofInput{}, fmt.Errorf("cannot get the event for header update on vectorx:%w", err)
+	}
+
+	extrinsicIndex, err := GetExtrinsicIndex(a.api, finalizedblockHash, a.keyringPair.Address, nonce)
+	if err != nil {
+		return MerkleProofInput{}, err
+	}
+	log.Info("Finalized extrinsic", "extrinsicIndex", extrinsicIndex)
+
+	merkleProofInput, err := QueryMerkleProofInput(a.bridgeApiBaseURL, finalizedblockHash.Hex(), extrinsicIndex, a.bridgeApiTimeout)
+	if err != nil {
+		return MerkleProofInput{}, err
+	}
+
+	return merkleProofInput, nil
+
+}
 func submitData(a *AvailDA, message []byte) (gsrpc_types.Hash, gsrpc_types.UCompact, error) {
 	c, err := gsrpc_types.NewCall(a.meta, "DataAvailability.submit_data", gsrpc_types.NewBytes(message))
 	if err != nil {

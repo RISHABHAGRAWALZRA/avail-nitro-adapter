@@ -314,7 +314,7 @@ func (v *StatelessBlockValidator) ValidationEntryRecord(ctx context.Context, e *
 			if v.availDAReader == nil {
 				log.Warn("No avail DA configured, but sequencer message found with availDA header")
 			} else {
-				_, err := arbstate.RecoverPayloadFromAvailBatch(ctx, batch.Number, batch.Data, v.availDAReader, e.Preimages)
+				_, err := arbstate.RecoverPayloadFromAvailBatchAndVerify(ctx, batch.Number, batch.Data, v.availDAReader, e.Preimages)
 				if err != nil {
 					return err
 				}
@@ -414,6 +414,7 @@ func (v *StatelessBlockValidator) CreateReadyValidationEntry(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
+
 	err = v.ValidationEntryRecord(ctx, entry)
 	if err != nil {
 		return nil, err

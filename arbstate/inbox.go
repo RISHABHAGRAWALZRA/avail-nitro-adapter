@@ -166,7 +166,7 @@ func parseSequencerMessage(ctx context.Context, batchNum uint64, batchBlockHash 
 	return parsedMsg, nil
 }
 
-func RecoverPayloadFromAvailBatch(ctx context.Context, batchNum uint64, sequencerMsg []byte, availDAReader avail.DataAvailabilityReader, preimages map[arbutil.PreimageType]map[common.Hash][]byte) ([]byte, error) {
+func RecoverPayloadFromAvailBatchAndVerify(ctx context.Context, batchNum uint64, sequencerMsg []byte, availDAReader avail.DataAvailabilityReader, preimages map[arbutil.PreimageType]map[common.Hash][]byte) ([]byte, error) {
 	var keccakPreimages map[common.Hash][]byte
 	if preimages != nil {
 		if preimages[arbutil.Keccak256PreimageType] == nil {
@@ -196,6 +196,10 @@ func RecoverPayloadFromAvailBatch(ctx context.Context, batchNum uint64, sequence
 		log.Error("Couldn't unmarshal Avail blob pointer", "err", err)
 		return nil, err
 	}
+
+	log.Info("Verifying the data against the VectorX bridge")
+
+	merkleProofInput, err := availDAReader.VerifyAgainstVectorX(blobPointer)
 
 	log.Info("Attempting to fetch data for", "batchNum", batchNum, "availBlockHash", blobPointer.BlockHash)
 	payload, err := availDAReader.Read(ctx, blobPointer)
