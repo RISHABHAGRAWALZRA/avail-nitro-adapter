@@ -43,7 +43,7 @@ type VectorX struct {
 	Query  ethereum.FilterQuery
 }
 
-func (v *VectorX) subscribeForHeaderUpdate(ctx context.Context, finalizedBlockNumber int) error {
+func (v *VectorX) fetchHeaderUpdateEvent(ctx context.Context, finalizedBlockNumber int) error {
 	// Subscribe to the event stream
 	logs := make(chan types.Log)
 	sub, err := v.Client.SubscribeFilterLogs(ctx, v.Query, logs)
@@ -83,7 +83,7 @@ func (v *VectorX) SubscribeForHeaderUpdate(finalizedBlockNumber int, t time.Dura
 	var err error
 	for i := 0; i < retryTimes; i++ {
 		log.Warn("Iteration", "Counter", strconv.Itoa(i+1), "Limit", retryTimes)
-		err = v.subscribeForHeaderUpdate(ctx, finalizedBlockNumber)
+		err = v.fetchHeaderUpdateEvent(ctx, finalizedBlockNumber)
 		if websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
 			log.Warn("Unexpected socket Closure:", err)
 			continue
