@@ -232,7 +232,7 @@ func submitData(a *AvailDA, message []byte) (gsrpc_types.Hash, gsrpc_types.UComp
 	// Send the extrinsic
 	sub, err := a.api.RPC.Author.SubmitAndWatchExtrinsic(ext)
 	if err != nil {
-		log.Warn("⚠️ cannot submit extrinsic", "error", err)
+		log.Warn("⚠️ cannot submit extrinsic", "error", err.Error())
 		return gsrpc_types.Hash{}, gsrpc_types.UCompact{}, err
 	}
 
