@@ -88,6 +88,7 @@ func (v *VectorX) SubscribeForHeaderUpdate(finalizedBlockNumber int, t time.Dura
 			log.Warn("Unexpected socket Closure:", err)
 			continue
 		}
+		break
 	}
 
 	return err
