@@ -84,7 +84,7 @@ func (v *VectorX) SubscribeForHeaderUpdate(finalizedBlockNumber int, t time.Dura
 	for i := 0; i < retryTimes; i++ {
 		log.Warn("Iteration", "Counter", strconv.Itoa(i+1), "Limit", retryTimes)
 		err = v.fetchHeaderUpdateEvent(ctx, finalizedBlockNumber)
-		if websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
+		if websocket.IsCloseError(err, websocket.CloseAbnormalClosure) {
 			log.Warn("Unexpected socket Closure:", err)
 			continue
 		}
