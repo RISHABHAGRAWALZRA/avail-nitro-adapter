@@ -78,8 +78,8 @@ func OpenArbosState(stateDB vm.StateDB, burner burn.Burner) (*ArbosState, error)
 	}
 	return &ArbosState{
 		arbosVersion,
-		31,
-		31,
+		33,
+		33,
 		backingStorage.OpenStorageBackedUint64(uint64(upgradeVersionOffset)),
 		backingStorage.OpenStorageBackedUint64(uint64(upgradeTimestampOffset)),
 		backingStorage.OpenStorageBackedAddress(uint64(networkFeeAccountOffset)),
@@ -331,6 +331,9 @@ func (state *ArbosState) UpgradeArbosVersion(
 			ensure(err)
 			ensure(params.UpgradeToVersion(2))
 			ensure(params.Save())
+
+		case 32, 33:
+			// these versions are left to Avail Orbit chains for custom upgrades.
 
 		default:
 			return fmt.Errorf(

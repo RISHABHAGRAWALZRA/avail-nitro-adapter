@@ -21,6 +21,8 @@ import (
 	"github.com/offchainlabs/nitro/das/dastree"
 )
 
+const CUSTOM_ARBOSVERSION_AVAIL = 33
+
 // AvailMessageHeaderFlag indicates that this data is a Blob Pointer
 // which will be used to retrieve data from Avail
 const AvailMessageHeaderFlag byte = 0x0a

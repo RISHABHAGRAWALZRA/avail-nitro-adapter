@@ -551,7 +551,10 @@ func createNodeImpl(
 		}
 	} else if l2Config.ArbitrumChainParams.DataAvailabilityCommittee {
 		return nil, errors.New("a data availability service is required for this chain, but it was not configured")
-	} else if config.Avail.Enable {
+	}
+
+	// for migration it is made in AND with AnytrustDAS
+	if config.Avail.Enable {
 		availService, err := avail.NewAvailDA(config.Avail, l1client)
 		if err != nil {
 			return nil, err
@@ -697,12 +700,17 @@ func createNodeImpl(
 		if txOptsBatchPoster == nil && config.BatchPoster.DataPoster.ExternalSigner.URL == "" {
 			return nil, errors.New("batchposter, but no TxOpts")
 		}
-		var dapWriter daprovider.Writer
+
+		var dapWriters []daprovider.Writer
+
 		if daWriter != nil {
-			dapWriter = daprovider.NewWriterForDAS(daWriter)
-		} else if availDAWriter != nil {
-			dapWriter = avail.NewWriterForAvailDA(availDAWriter)
+			dapWriters = append(dapWriters, daprovider.NewWriterForDAS(daWriter))
 		}
+
+		if availDAWriter != nil {
+			dapWriters = append(dapWriters, avail.NewWriterForAvailDA(availDAWriter))
+		}
+
 		batchPoster, err = NewBatchPoster(ctx, &BatchPosterOpts{
 			DataPosterDB:  rawdb.NewTable(arbDb, storage.BatchPosterPrefix),
 			L1Reader:      l1Reader,
@@ -713,7 +721,7 @@ func createNodeImpl(
 			Config:        func() *BatchPosterConfig { return &configFetcher.Get().BatchPoster },
 			DeployInfo:    deployInfo,
 			TransactOpts:  txOptsBatchPoster,
-			DAPWriter:     dapWriter,
+			DAPWriters:    dapWriters,
 			ParentChainID: parentChainID,
 			DAPReaders:    dapReaders,
 		})
