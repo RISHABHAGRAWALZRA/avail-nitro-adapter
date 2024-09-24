@@ -125,7 +125,7 @@ func NewAvailDA(cfg DAConfig, l1Client arbutil.L1Interface) (*AvailDA, error) {
 		rv:                  rv,
 		keyringPair:         keyringPair,
 		key:                 key,
-		bridgeApiBaseURL:    "https://turing-bridge-api.fra.avail.so/",
+		bridgeApiBaseURL:    cfg.BridgeApiURL,
 		bridgeApiTimeout:    time.Duration(1200),
 		vectorXTimeout:      time.Duration(10000),
 	}, nil

@@ -76,7 +76,7 @@ func (v *VectorX) SubscribeForHeaderUpdate(finalizedBlockNumber int, t time.Dura
 				return err
 			}
 
-			log.Info("🤝  New HeadUpdate event from vecotorx", "blockNumber", event[0])
+			log.Info("🤝  New HeadUpdate event from vectorx", "blockNumber", event[0])
 			val, _ := event[0].(uint32)
 			if val >= uint32(finalizedBlockNumber) {
 				return nil

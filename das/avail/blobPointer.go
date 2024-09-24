@@ -45,13 +45,13 @@ var blobPointerArguments = abi.Arguments{
 }
 
 // MarshalBinary encodes the BlobPointer to binary
-// serialization format: AvailMessageHeaderFlag + BlockHeight + ExtrinsicIndex + DasTreeRootHash + BlobProof
+// serialization format: AvailMessageHeaderFlag + Version + BlockHeight + ExtrinsicIndex + DasTreeRootHash + BlobDataKeccak256H + BlobProof
 //
 //	minimum size approx = 300 bytes
 //
 // --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 //
-// | 			1 byte 	  		  |   	  32 byte       |   	  32 byte         |		 32 byte       			 | 		      32 byte	       |			32 byte			   |   minimum bytes size = 176   |
+// | 			1 byte 	  		  |   	  1 byte       |   	  32 byte         |		 32 byte       			 | 		      32 byte	       |			32 byte			   |   minimum bytes size = 176   |
 //
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 //
@@ -77,7 +77,7 @@ func (b *BlobPointer) MarshalToBinary() ([]byte, error) {
 func (b *BlobPointer) UnmarshalFromBinary(data []byte) error {
 	unpackedData, err := blobPointerArguments.UnpackValues(data)
 	if err != nil {
-		return fmt.Errorf("unable to covert the data bytes into blobPointer and getting error:%w", err)
+		return fmt.Errorf("unable to convert the data bytes into blobPointer and getting error:%w", err)
 	}
 	b.Version = unpackedData[0].(uint8)                //nolint:all
 	b.BlockHeight = unpackedData[1].(uint32)           //nolint:all

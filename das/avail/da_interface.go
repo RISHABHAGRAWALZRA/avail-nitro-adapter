@@ -77,15 +77,15 @@ func (a *readerForAvailDA) RecoverPayloadFromBatch(ctx context.Context,
 	return payload, nil
 }
 
-type witerForAvailDA struct {
+type writerForAvailDA struct {
 	availDAWriter AvailDAWriter
 }
 
-func NewWriterForAvailDA(availDAWriter AvailDAWriter) *witerForAvailDA {
-	return &witerForAvailDA{availDAWriter: availDAWriter}
+func NewWriterForAvailDA(availDAWriter AvailDAWriter) *writerForAvailDA {
+	return &writerForAvailDA{availDAWriter: availDAWriter}
 }
 
-func (a *witerForAvailDA) Store(ctx context.Context,
+func (a *writerForAvailDA) Store(ctx context.Context,
 	message []byte,
 	timeout uint64,
 	disableFallbackStoreDataOnChain bool,
