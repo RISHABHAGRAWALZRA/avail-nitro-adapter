@@ -2,6 +2,7 @@ package avail
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -21,11 +22,15 @@ import (
 	"github.com/offchainlabs/nitro/das/dastree"
 )
 
-const CUSTOM_ARBOSVERSION_AVAIL = 33
+const (
+	CUSTOM_ARBOSVERSION_AVAIL      = 33
+	AvailMessageHeaderFlag    byte = 0x0a
+)
 
-// AvailMessageHeaderFlag indicates that this data is a Blob Pointer
-// which will be used to retrieve data from Avail
-const AvailMessageHeaderFlag byte = 0x0a
+var (
+	ErrAvailDAClientInit          = errors.New("unable to initialize to connect with AvailDA")
+	ErrBatchSubmitToAvailDAFailed = errors.New("unable to submit batch to AvailDA")
+)
 
 func IsAvailMessageHeaderByte(header byte) bool {
 	return (AvailMessageHeaderFlag & header) > 0
@@ -61,37 +66,32 @@ func NewAvailDA(cfg DAConfig, l1Client arbutil.L1Interface) (*AvailDA, error) {
 	// Creating new substrate api
 	api, err := gsrpc.NewSubstrateAPI(cfg.AvailApiURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("AvailDAError: %s. %w", err, ErrAvailDAClientInit)
 	}
 
 	meta, err := api.RPC.State.GetMetadataLatest()
 	if err != nil {
-		log.Warn("⚠️ cannot get metadata", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot get metadata, %s. %w", err, ErrAvailDAClientInit)
 	}
 
 	genesisHash, err := api.RPC.Chain.GetBlockHash(0)
 	if err != nil {
-		log.Warn("⚠️ cannot get block hash", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot get block hash, %s. %w", err, ErrAvailDAClientInit)
 	}
 
 	rv, err := api.RPC.State.GetRuntimeVersionLatest()
 	if err != nil {
-		log.Warn("⚠️ cannot get runtime version", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot get runtime version, %s. %w", err, ErrAvailDAClientInit)
 	}
 
 	keyringPair, err := signature.KeyringPairFromSecret(Seed, 42)
 	if err != nil {
-		log.Warn("⚠️ cannot create LeyPair", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot create keyPair, %s. %w", err, ErrAvailDAClientInit)
 	}
 
 	key, err := gsrpc_types.CreateStorageKey(meta, "System", "Account", keyringPair.PublicKey)
 	if err != nil {
-		log.Warn("⚠️ cannot create storage key", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot create storage key, %s. %w", err, ErrAvailDAClientInit)
 	}
 
 	// Contract address
@@ -100,14 +100,13 @@ func NewAvailDA(cfg DAConfig, l1Client arbutil.L1Interface) (*AvailDA, error) {
 	// Parse the contract ABI
 	abi, err := abi.JSON(strings.NewReader(vectorx.VectorxABI))
 	if err != nil {
-		log.Warn("⚠️ cannot create abi for vectorX", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot create abi for vectorX, %s. %w", err, ErrAvailDAClientInit)
 	}
 
 	// Connect to L1 node thru web socket
 	client, err := ethclient.Dial(cfg.ArbSepoliaRPC)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("AvailDAError: %s. %w", err, ErrAvailDAClientInit)
 	}
 
 	// Create a filter query to listen for events
@@ -137,19 +136,19 @@ func (a *AvailDA) Store(ctx context.Context, message []byte) ([]byte, error) {
 
 	finalizedblockHash, nonce, err := submitData(a, message)
 	if err != nil {
-		return nil, fmt.Errorf("cannot submit data to avail:%w", err)
+		return nil, fmt.Errorf("AvailDAError: cannot submit data to avail: %w, %w", err, ErrBatchSubmitToAvailDAFailed)
 	}
 
 	header, err := a.api.RPC.Chain.GetHeader(finalizedblockHash)
 	if err != nil {
-		return nil, fmt.Errorf("cannot get header for finalized block:%w", err)
+		return nil, fmt.Errorf("AvailDAError: cannot get header for finalized block: %w", err)
 	}
 
 	extrinsicIndex, err := GetExtrinsicIndex(a.api, finalizedblockHash, a.keyringPair.Address, nonce)
 	if err != nil {
 		return nil, err
 	}
-	log.Info("🏆  Data included in Avail's finalised block", "blockHash", finalizedblockHash.Hex(), "extrinsicIndex", extrinsicIndex)
+	log.Info("AvailDAInfo: 🏆  Data included in Avail's finalised block", "blockHash", finalizedblockHash.Hex(), "extrinsicIndex", extrinsicIndex)
 
 	blobProof, err := QueryBlobProof(a.api, extrinsicIndex, finalizedblockHash)
 	if err != nil {
@@ -159,25 +158,22 @@ func (a *AvailDA) Store(ctx context.Context, message []byte) ([]byte, error) {
 	// validation of blobProof in respect of submitted data
 	blobDataKeccak256H := crypto.Keccak256Hash(message)
 	if !ValidateBlobProof(blobProof, blobDataKeccak256H) {
-		err = fmt.Errorf("BlobProof is invalid")
-		log.Warn(err.Error(), "blobProof", blobProof.String())
-		return nil, err
+		return nil, fmt.Errorf("AvailDAError: BlobProof is invalid, BlobProof:%s", blobProof.String())
 	}
 
 	// Creating BlobPointer to submit over settlement layer
 	blobPointer := BlobPointer{Version: BLOBPOINTER_VERSION2, BlockHeight: uint32(header.Number), ExtrinsicIndex: uint32(extrinsicIndex), DasTreeRootHash: dastree.Hash(message), BlobDataKeccak265H: blobDataKeccak256H, BlobProof: blobProof}
-	log.Info("✅  Sucesfully included in block data to Avail", "BlobPointer:", blobPointer.String())
+	log.Info("AvailInfo: ✅  Sucesfully included in block data to Avail", "BlobPointer:", blobPointer.String())
 	blobPointerData, err := blobPointer.MarshalToBinary()
 	if err != nil {
-		log.Warn("⚠️ BlobPointer MashalBinary error", "err", err)
-		return nil, err
+		return nil, fmt.Errorf("AvailDAError: ⚠️ BlobPointer MashalBinary error, %w", err)
 	}
 
 	return blobPointerData, nil
 }
 
 func (a *AvailDA) Read(ctx context.Context, blobPointer BlobPointer) ([]byte, error) {
-	log.Info("ℹ️ Requesting data from Avail", "BlobPointer", blobPointer)
+	log.Info("AvailInfo: ℹ️ Requesting data from Avail", "BlobPointer", blobPointer)
 
 	// Intitializing variables
 	blockHeight := blobPointer.BlockHeight
@@ -185,13 +181,12 @@ func (a *AvailDA) Read(ctx context.Context, blobPointer BlobPointer) ([]byte, er
 
 	blockHash, err := a.api.RPC.Chain.GetBlockHash(uint64(blockHeight))
 	if err != nil {
-		log.Warn("⚠️ cannot get block hash", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot get block hash, %w", err)
 	}
 	// Fetching block based on block hash
 	avail_blk, err := a.api.RPC.Chain.GetBlock(blockHash)
 	if err != nil {
-		return []byte{}, fmt.Errorf("❌ cannot get block for hash:%v and getting error:%w", blockHash.Hex(), err)
+		return []byte{}, fmt.Errorf("AvailDAError: ❌ cannot get block for hash:%v and getting error:%w", blockHash.Hex(), err)
 	}
 
 	// Extracting the required extrinsic according to the reference
@@ -200,15 +195,14 @@ func (a *AvailDA) Read(ctx context.Context, blobPointer BlobPointer) ([]byte, er
 		return nil, err
 	}
 
-	log.Info("✅  Succesfully fetched data from Avail")
+	log.Info("AvailInfo: ✅  Succesfully fetched data from Avail")
 	return data, nil
 }
 
 func submitData(a *AvailDA, message []byte) (gsrpc_types.Hash, gsrpc_types.UCompact, error) {
 	c, err := gsrpc_types.NewCall(a.meta, "DataAvailability.submit_data", gsrpc_types.NewBytes(message))
 	if err != nil {
-		log.Warn("⚠️ cannot create new call", "error", err)
-		return gsrpc_types.Hash{}, gsrpc_types.UCompact{}, err
+		return gsrpc_types.Hash{}, gsrpc_types.UCompact{}, fmt.Errorf("⚠️ cannot create new call, %w", err)
 	}
 
 	// Create the extrinsic
@@ -217,8 +211,7 @@ func submitData(a *AvailDA, message []byte) (gsrpc_types.Hash, gsrpc_types.UComp
 	var accountInfo gsrpc_types.AccountInfo
 	ok, err := a.api.RPC.State.GetStorageLatest(a.key, &accountInfo)
 	if err != nil || !ok {
-		log.Warn("⚠️ cannot get latest storage", "error", err)
-		return gsrpc_types.Hash{}, gsrpc_types.UCompact{}, err
+		return gsrpc_types.Hash{}, gsrpc_types.UCompact{}, fmt.Errorf("⚠️ cannot get latest storage, %w", err)
 	}
 
 	o := gsrpc_types.SignatureOptions{
@@ -235,18 +228,16 @@ func submitData(a *AvailDA, message []byte) (gsrpc_types.Hash, gsrpc_types.UComp
 	// Sign the transaction using Alice's default account
 	err = ext.Sign(a.keyringPair, o)
 	if err != nil {
-		log.Warn("⚠️ cannot sign", "error", err)
-		return gsrpc_types.Hash{}, gsrpc_types.UCompact{}, err
+		return gsrpc_types.Hash{}, gsrpc_types.UCompact{}, fmt.Errorf("⚠️ cannot sign, %w", err)
 	}
 
 	// Send the extrinsic
 	sub, err := a.api.RPC.Author.SubmitAndWatchExtrinsic(ext)
 	if err != nil {
-		log.Warn("⚠️ cannot submit extrinsic", "error", err)
-		return gsrpc_types.Hash{}, gsrpc_types.UCompact{}, err
+		return gsrpc_types.Hash{}, gsrpc_types.UCompact{}, fmt.Errorf("⚠️ cannot submit extrinsic, %w", err)
 	}
 
-	log.Info("✅  Tx batch is submitted to Avail", "length", len(message), "address", a.keyringPair.Address, "appID", a.appID)
+	log.Info("AvailDAInfo: ✅  Tx batch is submitted to Avail", "length", len(message), "address", a.keyringPair.Address, "appID", a.appID)
 
 	defer sub.Unsubscribe()
 	timeout := time.After(a.finalizationTimeout * time.Second)
@@ -257,13 +248,13 @@ outer:
 		select {
 		case status := <-sub.Chan():
 			if status.IsInBlock {
-				log.Info("📥  Submit data extrinsic included in block", "blockHash", status.AsInBlock.Hex())
+				log.Info("AvailDAInfo: 📥  Submit data extrinsic included in block", "blockHash", status.AsInBlock.Hex())
 			} else if status.IsFinalized {
 				finalizedblockHash = status.AsFinalized
-				log.Info("📥  Submit data extrinsic included in finalized block", "blockHash", finalizedblockHash.Hex())
+				log.Info("AvailDAInfo: 📥  Submit data extrinsic included in finalized block", "blockHash", finalizedblockHash.Hex())
 				break outer
 			} else if status.IsRetracted {
-				log.Warn("✂️  AvailDA transaction got retracted from block", "blockHash", status.AsRetracted.Hex())
+				log.Warn("AvailDAWarn: ✂️  AvailDA transaction got retracted from block", "blockHash", status.AsRetracted.Hex())
 			} else if status.IsInvalid {
 				return gsrpc_types.Hash{}, gsrpc_types.UCompact{}, fmt.Errorf("❌ Extrinsic invalid")
 			}

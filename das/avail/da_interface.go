@@ -90,5 +90,16 @@ func (a *witerForAvailDA) Store(ctx context.Context,
 	timeout uint64,
 	disableFallbackStoreDataOnChain bool,
 ) ([]byte, error) {
-	return a.availDAWriter.Store(ctx, message)
+	blobPointer, err := a.availDAWriter.Store(ctx, message)
+	if errors.Is(err, ErrBatchSubmitToAvailDAFailed) {
+		if disableFallbackStoreDataOnChain {
+			return nil, errors.New("unable to batch to AvailDA and fallback storing data on chain is disabled")
+		}
+		log.Warn("Falling back to storing data on chain", "err", err)
+		return message, nil
+	} else if err != nil {
+		return nil, err
+	} else {
+		return blobPointer, nil
+	}
 }
