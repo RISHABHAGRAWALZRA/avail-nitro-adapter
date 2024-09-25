@@ -66,32 +66,32 @@ func NewAvailDA(cfg DAConfig, l1Client arbutil.L1Interface) (*AvailDA, error) {
 	// Creating new substrate api
 	api, err := gsrpc.NewSubstrateAPI(cfg.AvailApiURL)
 	if err != nil {
-		return nil, fmt.Errorf("AvailDAError: %s. %w", err, ErrAvailDAClientInit)
+		return nil, fmt.Errorf("AvailDAError: %w. %w", err, ErrAvailDAClientInit)
 	}
 
 	meta, err := api.RPC.State.GetMetadataLatest()
 	if err != nil {
-		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot get metadata, %s. %w", err, ErrAvailDAClientInit)
+		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot get metadata, %w. %w", err, ErrAvailDAClientInit)
 	}
 
 	genesisHash, err := api.RPC.Chain.GetBlockHash(0)
 	if err != nil {
-		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot get block hash, %s. %w", err, ErrAvailDAClientInit)
+		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot get block hash, %w. %w", err, ErrAvailDAClientInit)
 	}
 
 	rv, err := api.RPC.State.GetRuntimeVersionLatest()
 	if err != nil {
-		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot get runtime version, %s. %w", err, ErrAvailDAClientInit)
+		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot get runtime version, %w. %w", err, ErrAvailDAClientInit)
 	}
 
 	keyringPair, err := signature.KeyringPairFromSecret(Seed, 42)
 	if err != nil {
-		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot create keyPair, %s. %w", err, ErrAvailDAClientInit)
+		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot create keyPair, %w. %w", err, ErrAvailDAClientInit)
 	}
 
 	key, err := gsrpc_types.CreateStorageKey(meta, "System", "Account", keyringPair.PublicKey)
 	if err != nil {
-		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot create storage key, %s. %w", err, ErrAvailDAClientInit)
+		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot create storage key, %w. %w", err, ErrAvailDAClientInit)
 	}
 
 	// Contract address
@@ -100,13 +100,13 @@ func NewAvailDA(cfg DAConfig, l1Client arbutil.L1Interface) (*AvailDA, error) {
 	// Parse the contract ABI
 	abi, err := abi.JSON(strings.NewReader(vectorx.VectorxABI))
 	if err != nil {
-		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot create abi for vectorX, %s. %w", err, ErrAvailDAClientInit)
+		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot create abi for vectorX, %w. %w", err, ErrAvailDAClientInit)
 	}
 
 	// Connect to L1 node thru web socket
 	client, err := ethclient.Dial(cfg.ArbSepoliaRPC)
 	if err != nil {
-		return nil, fmt.Errorf("AvailDAError: %s. %w", err, ErrAvailDAClientInit)
+		return nil, fmt.Errorf("AvailDAError: %w. %w", err, ErrAvailDAClientInit)
 	}
 
 	// Create a filter query to listen for events
