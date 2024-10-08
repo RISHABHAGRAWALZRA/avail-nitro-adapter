@@ -167,7 +167,7 @@ func (a *AvailDA) Store(ctx context.Context, message []byte) ([]byte, error) {
 	}
 
 	// Creating BlobPointer to submit over settlement layer
-	blobPointer := BlobPointer{Version: BLOBPOINTER_VERSION2, BlockHeight: uint32(header.Number), ExtrinsicIndex: uint32(extrinsicIndex), DasTreeRootHash: dastree.Hash(message), BlobDataKeccak265H: blobDataKeccak256H, BlobProof: blobProof}
+	blobPointer := BlobPointer{Version: BLOBPOINTER_VERSION2, BlockHeight: uint32(header.Number), ExtrinsicIndex: uint32(extrinsicIndex), DasTreeRootHash: dastree.Hash(message), BlobDataKeccak265H: blobDataKeccak256H, BlobProof: blobProof} //nolint: gosec
 	log.Info("AvailInfo: ✅  Sucesfully included in block data to Avail", "BlobPointer:", blobPointer.String())
 	blobPointerData, err := blobPointer.MarshalToBinary()
 	if err != nil {
@@ -226,7 +226,7 @@ func submitData(a *AvailDA, message []byte) (gsrpc_types.Hash, gsrpc_types.UComp
 		Nonce:              gsrpc_types.NewUCompactFromUInt(uint64(accountInfo.Nonce)),
 		SpecVersion:        a.rv.SpecVersion,
 		Tip:                gsrpc_types.NewUCompactFromUInt(0),
-		AppID:              gsrpc_types.NewUCompactFromUInt(uint64(a.appID)),
+		AppID:              gsrpc_types.NewUCompactFromUInt(uint64(a.appID)), //nolint:gosec
 		TransactionVersion: a.rv.TransactionVersion,
 	}
 

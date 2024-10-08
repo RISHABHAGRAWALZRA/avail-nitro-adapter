@@ -41,7 +41,7 @@ type VectorX struct {
 	Query  ethereum.FilterQuery
 }
 
-func (v *VectorX) SubscribeForHeaderUpdate(finalizedBlockNumber int, t time.Duration) error {
+func (v *VectorX) SubscribeForHeaderUpdate(finalizedBlockNumber uint32, t time.Duration) error {
 	// Subscribe to the event stream
 	logs := make(chan types.Log)
 	sub, err := v.Client.SubscribeFilterLogs(context.Background(), v.Query, logs)
