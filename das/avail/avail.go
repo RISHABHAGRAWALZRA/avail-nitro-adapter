@@ -23,6 +23,11 @@ import (
 )
 
 const (
+	BridgeApiTimeout = time.Duration(1200)
+	VectorXTimeout   = time.Duration(10000)
+)
+
+const (
 	CUSTOM_ARBOSVERSION_AVAIL      = 33
 	AvailMessageHeaderFlag    byte = 0x0a
 )
@@ -126,9 +131,9 @@ func NewAvailDA(cfg DAConfig, l1Client arbutil.L1Interface) (*AvailDA, error) {
 		rv:                  rv,
 		keyringPair:         keyringPair,
 		key:                 key,
-		bridgeApiBaseURL:    "https://turing-bridge-api.fra.avail.so/",
-		bridgeApiTimeout:    time.Duration(1200),
-		vectorXTimeout:      time.Duration(10000),
+		bridgeApiBaseURL:    cfg.BridgeApiBaseURL,
+		bridgeApiTimeout:    BridgeApiTimeout,
+		vectorXTimeout:      VectorXTimeout,
 	}, nil
 }
 
