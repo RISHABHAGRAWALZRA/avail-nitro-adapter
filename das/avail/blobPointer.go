@@ -61,14 +61,14 @@ var blobPointerArguments = abi.Arguments{
 func (b *BlobPointer) MarshalToBinary() ([]byte, error) {
 	packedData, err := blobPointerArguments.PackValues([]interface{}{b.Version, b.BlockHeight, b.ExtrinsicIndex, b.DasTreeRootHash, b.BlobDataKeccak265H, b.BlobProof})
 	if err != nil {
-		return []byte{}, fmt.Errorf("unable to covert the blobPointer into array of bytes and getting error:%w", err)
+		return []byte{}, fmt.Errorf("unable to convert the blobPointer into array of bytes and getting error:%w", err)
 	}
 
 	// Encoding at first the avail message header flag
 	buf := new(bytes.Buffer)
 	if err := binary.Write(buf, binary.BigEndian, AvailMessageHeaderFlag); err != nil {
 		fmt.Println("binary.Write failed:", err)
-		return []byte{}, fmt.Errorf("unable to covert the avail block referece into array of bytes and getting error:%w", err)
+		return []byte{}, fmt.Errorf("unable to convert the avail block referece into array of bytes and getting error:%w", err)
 	}
 	serializedBlobPointerData := append(buf.Bytes(), packedData...)
 	return serializedBlobPointerData, nil
