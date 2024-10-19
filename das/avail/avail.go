@@ -23,18 +23,16 @@ import (
 )
 
 const (
-	BridgeApiTimeout = time.Duration(1200)
-	VectorXTimeout   = time.Duration(10000)
-)
-
-const (
 	CUSTOM_ARBOSVERSION_AVAIL      = 33
 	AvailMessageHeaderFlag    byte = 0x0a
+	BridgeApiTimeout               = time.Duration(1200)
+	VectorXTimeout                 = time.Duration(10000)
 )
 
 var (
 	ErrAvailDAClientInit          = errors.New("unable to initialize to connect with AvailDA")
 	ErrBatchSubmitToAvailDAFailed = errors.New("unable to submit batch to AvailDA")
+	ErrWrongAvailDAPointer        = errors.New("unable to retrieve batch, wrong blobPointer")
 )
 
 func IsAvailMessageHeaderByte(header byte) bool {
@@ -184,10 +182,17 @@ func (a *AvailDA) Read(ctx context.Context, blobPointer BlobPointer) ([]byte, er
 	blockHeight := blobPointer.BlockHeight
 	extrinsicIndex := blobPointer.ExtrinsicIndex
 
+	latestHeader, err := a.api.RPC.Chain.GetHeaderLatest()
+
+	if latestHeader.Number < gsrpc_types.BlockNumber(blockHeight) {
+		return nil, fmt.Errorf("AvailDAError: %w: %w", err, ErrWrongAvailDAPointer)
+	}
+
 	blockHash, err := a.api.RPC.Chain.GetBlockHash(uint64(blockHeight))
 	if err != nil {
 		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot get block hash, %w", err)
 	}
+
 	// Fetching block based on block hash
 	avail_blk, err := a.api.RPC.Chain.GetBlock(blockHash)
 	if err != nil {
