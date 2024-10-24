@@ -41,6 +41,10 @@ func GetExtrinsicIndex(api *gsrpc.SubstrateAPI, blockHash gsrpc_types.Hash, addr
 
 func extractExtrinsicData(avail_blk *gsrpc_types.SignedBlock, extrinsicIndex uint32) ([]byte, error) {
 
+	if len(avail_blk.Block.Extrinsics) < int(extrinsicIndex) {
+		return nil, fmt.Errorf("wrong extrinsic index: %v: %w", extrinsicIndex, ErrWrongAvailDAPointer)
+	}
+
 	ext := avail_blk.Block.Extrinsics[extrinsicIndex]
 	args := ext.Method.Args
 	var data []byte

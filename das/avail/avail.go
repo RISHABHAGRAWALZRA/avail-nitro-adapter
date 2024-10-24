@@ -25,11 +25,14 @@ import (
 const (
 	CUSTOM_ARBOSVERSION_AVAIL      = 33
 	AvailMessageHeaderFlag    byte = 0x0a
+	BridgeApiTimeout               = time.Duration(1200)
+	VectorXTimeout                 = time.Duration(10000)
 )
 
 var (
 	ErrAvailDAClientInit          = errors.New("unable to initialize to connect with AvailDA")
 	ErrBatchSubmitToAvailDAFailed = errors.New("unable to submit batch to AvailDA")
+	ErrWrongAvailDAPointer        = errors.New("unable to retrieve batch, wrong blobPointer")
 )
 
 func IsAvailMessageHeaderByte(header byte) bool {
@@ -126,9 +129,9 @@ func NewAvailDA(cfg DAConfig, l1Client arbutil.L1Interface) (*AvailDA, error) {
 		rv:                  rv,
 		keyringPair:         keyringPair,
 		key:                 key,
-		bridgeApiBaseURL:    "https://turing-bridge-api.fra.avail.so/",
-		bridgeApiTimeout:    time.Duration(1200),
-		vectorXTimeout:      time.Duration(10000),
+		bridgeApiBaseURL:    cfg.BridgeApiBaseURL,
+		bridgeApiTimeout:    BridgeApiTimeout,
+		vectorXTimeout:      VectorXTimeout,
 	}, nil
 }
 
@@ -162,7 +165,7 @@ func (a *AvailDA) Store(ctx context.Context, message []byte) ([]byte, error) {
 	}
 
 	// Creating BlobPointer to submit over settlement layer
-	blobPointer := BlobPointer{Version: BLOBPOINTER_VERSION2, BlockHeight: uint32(header.Number), ExtrinsicIndex: uint32(extrinsicIndex), DasTreeRootHash: dastree.Hash(message), BlobDataKeccak265H: blobDataKeccak256H, BlobProof: blobProof}
+	blobPointer := BlobPointer{Version: BLOBPOINTER_VERSION2, BlockHeight: uint32(header.Number), ExtrinsicIndex: uint32(extrinsicIndex), DasTreeRootHash: dastree.Hash(message), BlobDataKeccak265H: blobDataKeccak256H, BlobProof: blobProof} //nolint: gosec
 	log.Info("AvailInfo: ✅  Sucesfully included in block data to Avail", "BlobPointer:", blobPointer.String())
 	blobPointerData, err := blobPointer.MarshalToBinary()
 	if err != nil {
@@ -179,10 +182,17 @@ func (a *AvailDA) Read(ctx context.Context, blobPointer BlobPointer) ([]byte, er
 	blockHeight := blobPointer.BlockHeight
 	extrinsicIndex := blobPointer.ExtrinsicIndex
 
+	latestHeader, err := a.api.RPC.Chain.GetHeaderLatest()
+
+	if latestHeader.Number < gsrpc_types.BlockNumber(blockHeight) {
+		return nil, fmt.Errorf("AvailDAError: %w: %w", err, ErrWrongAvailDAPointer)
+	}
+
 	blockHash, err := a.api.RPC.Chain.GetBlockHash(uint64(blockHeight))
 	if err != nil {
 		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot get block hash, %w", err)
 	}
+
 	// Fetching block based on block hash
 	avail_blk, err := a.api.RPC.Chain.GetBlock(blockHash)
 	if err != nil {
@@ -221,7 +231,7 @@ func submitData(a *AvailDA, message []byte) (gsrpc_types.Hash, gsrpc_types.UComp
 		Nonce:              gsrpc_types.NewUCompactFromUInt(uint64(accountInfo.Nonce)),
 		SpecVersion:        a.rv.SpecVersion,
 		Tip:                gsrpc_types.NewUCompactFromUInt(0),
-		AppID:              gsrpc_types.NewUCompactFromUInt(uint64(a.appID)),
+		AppID:              gsrpc_types.NewUCompactFromUInt(uint64(a.appID)), //nolint:gosec
 		TransactionVersion: a.rv.TransactionVersion,
 	}
 
