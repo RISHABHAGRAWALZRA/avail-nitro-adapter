@@ -4,32 +4,32 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"math"
 
 	"time"
 
 	gsrpc "github.com/centrifuge/go-substrate-rpc-client/v4"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/signature"
 	gsrpc_types "github.com/centrifuge/go-substrate-rpc-client/v4/types"
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/offchainlabs/nitro/arbutil"
-	"github.com/offchainlabs/nitro/das/avail/vectorx"
+	"github.com/offchainlabs/nitro/das/avail/availDABridge"
+	s3_storage_service "github.com/offchainlabs/nitro/das/avail/s3StorageService"
 	"github.com/offchainlabs/nitro/das/dastree"
 )
 
 const (
 	CUSTOM_ARBOSVERSION_AVAIL      = 33
 	AvailMessageHeaderFlag    byte = 0x0a
+	BridgeApiTimeout               = time.Duration(1200)
+	VectorXTimeout                 = time.Duration(10000)
 )
 
 var (
 	ErrAvailDAClientInit          = errors.New("unable to initialize to connect with AvailDA")
 	ErrBatchSubmitToAvailDAFailed = errors.New("unable to submit batch to AvailDA")
+	ErrWrongAvailDAPointer        = errors.New("unable to retrieve batch, wrong blobPointer")
 )
 
 func IsAvailMessageHeaderByte(header byte) bool {
@@ -37,19 +37,23 @@ func IsAvailMessageHeaderByte(header byte) bool {
 }
 
 type AvailDA struct {
+	// Config
 	enable              bool
-	vectorx             vectorx.VectorX
 	finalizationTimeout time.Duration
 	appID               int
-	api                 *gsrpc.SubstrateAPI
-	meta                *gsrpc_types.Metadata
-	genesisHash         gsrpc_types.Hash
-	rv                  *gsrpc_types.RuntimeVersion
-	keyringPair         signature.KeyringPair
-	key                 gsrpc_types.StorageKey
-	bridgeApiBaseURL    string
-	bridgeApiTimeout    time.Duration
-	vectorXTimeout      time.Duration
+
+	// Client
+	api         *gsrpc.SubstrateAPI
+	meta        *gsrpc_types.Metadata
+	genesisHash gsrpc_types.Hash
+	rv          *gsrpc_types.RuntimeVersion
+	keyringPair signature.KeyringPair
+	key         gsrpc_types.StorageKey
+
+	// Fallback
+	fallbackS3Service *s3_storage_service.S3StorageService
+	// AvailDABridge
+	availDABridge availDABridge.AvailDABridge
 }
 
 func NewAvailDA(cfg DAConfig, l1Client arbutil.L1Interface) (*AvailDA, error) {
@@ -94,30 +98,16 @@ func NewAvailDA(cfg DAConfig, l1Client arbutil.L1Interface) (*AvailDA, error) {
 		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot create storage key, %w. %w", err, ErrAvailDAClientInit)
 	}
 
-	// Contract address
-	contractAddress := common.HexToAddress(cfg.VectorX)
-
-	// Parse the contract ABI
-	abi, err := abi.JSON(strings.NewReader(vectorx.VectorxABI))
-	if err != nil {
-		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot create abi for vectorX, %w. %w", err, ErrAvailDAClientInit)
-	}
-
-	// Connect to L1 node thru web socket
-	client, err := ethclient.Dial(cfg.ArbSepoliaRPC)
-	if err != nil {
-		return nil, fmt.Errorf("AvailDAError: %w. %w", err, ErrAvailDAClientInit)
-	}
-
-	// Create a filter query to listen for events
-	query := ethereum.FilterQuery{
-		Addresses: []common.Address{contractAddress},
-		Topics:    [][]common.Hash{{abi.Events["HeadUpdate"].ID}},
+	var fallbackS3Service *s3_storage_service.S3StorageService
+	if cfg.FallbackS3ServiceConfig.Enable {
+		fallbackS3Service, err = s3_storage_service.NewS3StorageService(cfg.FallbackS3ServiceConfig)
+		if err != nil {
+			return nil, fmt.Errorf("AvailDAError: unable to intialize s3 storage service for fallback, %w. %w", err, ErrAvailDAClientInit)
+		}
 	}
 
 	return &AvailDA{
 		enable:              cfg.Enable,
-		vectorx:             vectorx.VectorX{Abi: abi, Client: client, Query: query},
 		finalizationTimeout: time.Duration(cfg.Timeout),
 		appID:               appID,
 		api:                 api,
@@ -126,9 +116,8 @@ func NewAvailDA(cfg DAConfig, l1Client arbutil.L1Interface) (*AvailDA, error) {
 		rv:                  rv,
 		keyringPair:         keyringPair,
 		key:                 key,
-		bridgeApiBaseURL:    "https://turing-bridge-api.fra.avail.so/",
-		bridgeApiTimeout:    time.Duration(1200),
-		vectorXTimeout:      time.Duration(10000),
+		fallbackS3Service:   fallbackS3Service,
+		availDABridge:       availDABridge.AvailDABridge{},
 	}, nil
 }
 
@@ -144,29 +133,37 @@ func (a *AvailDA) Store(ctx context.Context, message []byte) ([]byte, error) {
 		return nil, fmt.Errorf("AvailDAError: cannot get header for finalized block: %w", err)
 	}
 
-	extrinsicIndex, err := GetExtrinsicIndex(a.api, finalizedblockHash, a.keyringPair.Address, nonce)
+	extrinsicIndex, err := getExtrinsicIndex(a.api, finalizedblockHash, a.keyringPair.Address, nonce)
 	if err != nil {
 		return nil, err
 	}
 	log.Info("AvailDAInfo: 🏆  Data included in Avail's finalised block", "blockHash", finalizedblockHash.Hex(), "extrinsicIndex", extrinsicIndex)
 
-	blobProof, err := QueryBlobProof(a.api, extrinsicIndex, finalizedblockHash)
+	blobProof, err := queryBlobProof(a.api, extrinsicIndex, finalizedblockHash)
 	if err != nil {
 		return nil, err
 	}
 
 	// validation of blobProof in respect of submitted data
 	blobDataKeccak256H := crypto.Keccak256Hash(message)
-	if !ValidateBlobProof(blobProof, blobDataKeccak256H) {
+	if !validateBlobProof(blobProof, blobDataKeccak256H) {
 		return nil, fmt.Errorf("AvailDAError: BlobProof is invalid, BlobProof:%s", blobProof.String())
 	}
 
 	// Creating BlobPointer to submit over settlement layer
-	blobPointer := BlobPointer{Version: BLOBPOINTER_VERSION2, BlockHeight: uint32(header.Number), ExtrinsicIndex: uint32(extrinsicIndex), DasTreeRootHash: dastree.Hash(message), BlobDataKeccak265H: blobDataKeccak256H, BlobProof: blobProof}
+	blobPointer := BlobPointer{Version: BLOBPOINTER_VERSION2, BlockHeight: uint32(header.Number), ExtrinsicIndex: uint32(extrinsicIndex), DasTreeRootHash: dastree.Hash(message), BlobDataKeccak265H: blobDataKeccak256H, BlobProof: blobProof} //nolint: gosec
 	log.Info("AvailInfo: ✅  Sucesfully included in block data to Avail", "BlobPointer:", blobPointer.String())
 	blobPointerData, err := blobPointer.MarshalToBinary()
 	if err != nil {
 		return nil, fmt.Errorf("AvailDAError: ⚠️ BlobPointer MashalBinary error, %w", err)
+	}
+
+	// fallback
+	if a.fallbackS3Service != nil {
+		err := a.fallbackS3Service.Put(ctx, message, 0)
+		if err != nil {
+			log.Error("AvailDAError: failed to put data on s3 storage service: %w", err)
+		}
 	}
 
 	return blobPointerData, nil
@@ -179,10 +176,51 @@ func (a *AvailDA) Read(ctx context.Context, blobPointer BlobPointer) ([]byte, er
 	blockHeight := blobPointer.BlockHeight
 	extrinsicIndex := blobPointer.ExtrinsicIndex
 
+	var data []byte
+	for i := 0; i < 3; i++ {
+		var err error
+		data, err = readData(a, blockHeight, extrinsicIndex)
+		if err == nil {
+			log.Info("AvailInfo: ✅  Succesfully fetched data from Avail")
+			break
+		} else if i == 2 {
+			log.Info("AvailInfo: ❌  failed to fetched data from Avail, err: %w", err)
+
+			if a.fallbackS3Service != nil {
+				data, err = a.fallbackS3Service.GetByHash(ctx, blobPointer.DasTreeRootHash)
+				if err != nil {
+					log.Info("AvailInfo: ❌  failed to read data from fallback s3 storage, err: %w", err)
+					return nil, fmt.Errorf("AvailDAError: unable to read data from AvailDA & Fallback s3 storage")
+				}
+				log.Info("AvailInfo: ✅  Succesfully fetched data from Avail using fallbackS3Service")
+				break
+			} else {
+				return nil, fmt.Errorf("AvailDAError: unable to read data from AvailDA & Fallback s3 storage is not enabled")
+			}
+
+		}
+		sleepDuration := time.Duration(math.Pow(2, float64(i))) * time.Second
+		time.Sleep(sleepDuration)
+	}
+
+	return data, nil
+}
+
+func readData(a *AvailDA, blockHeight, extrinsicIndex uint32) ([]byte, error) {
+	latestHeader, err := a.api.RPC.Chain.GetHeaderLatest()
+	if err != nil {
+		return nil, fmt.Errorf("AvailDAError: cannot get latest header, %w", err)
+	}
+
+	if latestHeader.Number < gsrpc_types.BlockNumber(blockHeight) {
+		return nil, fmt.Errorf("AvailDAError: %w: %w", err, ErrWrongAvailDAPointer)
+	}
+
 	blockHash, err := a.api.RPC.Chain.GetBlockHash(uint64(blockHeight))
 	if err != nil {
 		return nil, fmt.Errorf("AvailDAError: ⚠️ cannot get block hash, %w", err)
 	}
+
 	// Fetching block based on block hash
 	avail_blk, err := a.api.RPC.Chain.GetBlock(blockHash)
 	if err != nil {
@@ -195,7 +233,6 @@ func (a *AvailDA) Read(ctx context.Context, blobPointer BlobPointer) ([]byte, er
 		return nil, err
 	}
 
-	log.Info("AvailInfo: ✅  Succesfully fetched data from Avail")
 	return data, nil
 }
 
@@ -221,7 +258,7 @@ func submitData(a *AvailDA, message []byte) (gsrpc_types.Hash, gsrpc_types.UComp
 		Nonce:              gsrpc_types.NewUCompactFromUInt(uint64(accountInfo.Nonce)),
 		SpecVersion:        a.rv.SpecVersion,
 		Tip:                gsrpc_types.NewUCompactFromUInt(0),
-		AppID:              gsrpc_types.NewUCompactFromUInt(uint64(a.appID)),
+		AppID:              gsrpc_types.NewUCompactFromUInt(uint64(a.appID)), //nolint:gosec
 		TransactionVersion: a.rv.TransactionVersion,
 	}
 
