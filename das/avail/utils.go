@@ -17,7 +17,7 @@ import (
 	"github.com/vedhavyas/go-subkey"
 )
 
-func GetExtrinsicIndex(api *gsrpc.SubstrateAPI, blockHash gsrpc_types.Hash, address string, nonce gsrpc_types.UCompact) (int, error) {
+func getExtrinsicIndex(api *gsrpc.SubstrateAPI, blockHash gsrpc_types.Hash, address string, nonce gsrpc_types.UCompact) (int, error) {
 	// Fetching block based on block hash
 	avail_blk, err := api.RPC.Chain.GetBlock(blockHash)
 	if err != nil {
@@ -81,7 +81,7 @@ type Message interface {
 	isMessage()
 }
 
-func QueryBlobProof(api *gsrpc.SubstrateAPI, transactionIndex int, blockHash gsrpc_types.Hash) (BlobProof, error) {
+func queryBlobProof(api *gsrpc.SubstrateAPI, transactionIndex int, blockHash gsrpc_types.Hash) (BlobProof, error) {
 	var res ProofResponse
 	err := api.Client.Call(&res, "kate_queryDataProof", transactionIndex, blockHash)
 	if err != nil {
@@ -96,7 +96,7 @@ func QueryBlobProof(api *gsrpc.SubstrateAPI, transactionIndex int, blockHash gsr
 	return BlobProof{DataRoot: res.DataProof.Roots.DataRoot, BlobRoot: res.DataProof.Roots.BlobRoot, BridgeRoot: res.DataProof.Roots.BridgeRoot, LeafProof: leafProof, NumberOfLeaves: res.DataProof.NumberOfLeaves, LeafIndex: res.DataProof.LeafIndex, Leaf: res.DataProof.Leaf}, nil
 }
 
-func ValidateBlobProof(bp BlobProof, hash common.Hash) bool {
+func validateBlobProof(bp BlobProof, hash common.Hash) bool {
 	if bp.Leaf != hash {
 		log.Warn("BlobProof is not matching with submitted blob data", "blobProof.leaf", hex.EncodeToString(bp.Leaf[:]), "blobHash", hash)
 		return false
@@ -121,7 +121,8 @@ type BridgeApiResponse struct {
 	RangeHash          gsrpc_types.Hash   `json:"rangeHash"`
 }
 
-func QueryMerkleProofInput(bridgeApiBaseURL string, blockHash string, extrinsicIndex int, t time.Duration) (MerkleProofInput, error) {
+//nolint:unused
+func queryMerkleProofInput(bridgeApiBaseURL string, blockHash string, extrinsicIndex int, t time.Duration) (MerkleProofInput, error) {
 	// Quering for merkle proof from Bridge Api
 	blockHashPath := "/eth/proof/" + blockHash
 	params := url.Values{}
@@ -142,6 +143,7 @@ func QueryMerkleProofInput(bridgeApiBaseURL string, blockHash string, extrinsicI
 	return merkleProofInput, nil
 }
 
+//nolint:unused
 func queryForBridgeApiRespose(t time.Duration, urlStr string) (BridgeApiResponse, error) {
 	var resp *http.Response
 	timeout := time.After(t * time.Second)
@@ -176,6 +178,7 @@ func queryForBridgeApiRespose(t time.Duration, urlStr string) (BridgeApiResponse
 	}
 }
 
+//nolint:unused
 func createMerkleProofInput(b BridgeApiResponse) MerkleProofInput {
 	var dataRootProof [][32]byte
 	for _, hash := range b.DataRootProof {
